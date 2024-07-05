@@ -189,7 +189,7 @@ void TreeReaderTest() { //BoardType, first serial #, last serial #, last Id #
     }
     Canvases[0]->Print("GBiasHist.pdf]");
     // Create a new TPDF object to save the histograms in a separate PDF file
-    TPDF *pdf1 = new TPDF("GBiasHist_Separate.pdf");
+    TPDF *pdf1 = new TPDF("GBiasHist_info.pdf");
 
     TCanvas *canvas1 = new TCanvas("canvas1", "canvas1", 700, 900);
     TLatex* text = new TLatex();
@@ -200,7 +200,7 @@ void TreeReaderTest() { //BoardType, first serial #, last serial #, last Id #
     Double_t x = gPad->GetLeftMargin() + 0.01;
     Double_t y = 1 - gPad->GetTopMargin() - 0.01;
 
-    // Loop through the unique boards with OOT measurements and add their serial numbers to the text
+    // Loop through the boards with OOT measurements and add their serial numbers to the text
     for (const auto& SerialNumber : uniqueBoardsWithOOTMeasurements) {
         y -= 0.02;
         text->SetTextColor(1); 
@@ -218,14 +218,13 @@ void TreeReaderTest() { //BoardType, first serial #, last serial #, last Id #
     y -= 0.02; 
     text->DrawLatexNDC(x, y, Form("Rejected Boards: 91 (Artificial-> NOT A REAL BOARD)"));
 
-    float yeild = 90.0/91.0f;
-
+    float yeild = 90.0/91.0f
     y -= .05;
     text-> DrawLatexNDC(x, y, Form("Yield percentage: %.2f%%", + yeild * 100));
 
     canvas1->Draw();
     pdf1->NewPage();
-    canvas1->Print("GBiasHist_Separate.pdf");
+    canvas1->Print("GBiasHist_info.pdf");
 
     pdf1->Close();
 
