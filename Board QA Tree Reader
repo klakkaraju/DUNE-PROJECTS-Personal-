@@ -1,0 +1,234 @@
+void TreeReaderTest() { //BoardType, first serial #, last serial #, last Id #
+    // Define variables for the data in the tree
+    int SerialNumber;
+    int MeasurementId;
+    std::string* MeasurementName = nullptr;
+    std::string* BoardType = nullptr; // Declare a pointer to a string variable to hold the board type
+    double MeasurementValue;
+    double NominalValue;
+    double Tolerance;
+
+    // Open the input file and get the tree
+    TFile *inputFile = TFile::Open("/home/tkdkrishna/newBoardTreeFile.root");
+    TTree *tree = static_cast<TTree*>(inputFile->Get("tree"));
+   
+    // Check if the tree was successfully opened
+    if (!tree) {
+        std::cerr << "Error getting TTree from input file" << std::endl;
+        inputFile->Close();
+        return;
+    }
+
+    // Set the branch addresses for the data in the tree
+    tree->SetBranchAddress("MeasurementName",  &MeasurementName);
+    tree->SetBranchAddress("BoardType",        &BoardType); // Set the branch address for boardType
+    tree->SetBranchAddress("SerialNumber",     &SerialNumber);
+    tree->SetBranchAddress("MeasurementId",    &MeasurementId);
+    tree->SetBranchAddress("MeasurementValue", &MeasurementValue);
+    tree->SetBranchAddress("NominalValue",     &NominalValue);
+    tree->SetBranchAddress("Tolerance",        &Tolerance);
+
+    // Define constants for the histogram settings
+    const int binNumber = 25000; //change to a tenth of a mil 
+
+    // Get the number of entries in the tree
+    const int numberOfEntries = tree->GetEntries();
+
+    // Define vectors to store the histograms for each board type
+    std::vector<TH1F*> vec1GBias;
+    std::vector<TH1F*> vec1CR;
+    std::vector<TH1F*> vec1Adapter;
+    std::vector<TH1F*> vec1SHV;
+
+    //create empty histograms for each board type
+
+    //vec for nom val for each type --> loop over
+    //h is a measurement id
+    for(size_t h = 0; h <=27; ++h) {
+
+      vec1GBias.push_back(new TH1F(("GBiasID_" + std::to_string(h)).c_str(),
+                                      ";Measurement Value (mm);Number of G-Bias Boards",
+                                      binNumber, 0, 250));
+
+      vec1CR.push_back(new TH1F(("CRID_" + std::to_string(h)).c_str(),
+                                      ";Measurement Value (mm);Number of CR Boards",
+                                      binNumber, 0, 250));
+      
+      vec1Adapter.push_back(new TH1F(("AdapterID_" + std::to_string(h)).c_str(),
+                                      ";Measurement Value (mm);Number of Adapter Boards",
+                                      binNumber, 0, 250));
+      
+      vec1SHV.push_back(new TH1F(("SHVID_" + std::to_string(h)).c_str(),
+                                      ";Measurement Value (mm);Number of SHV Boards",
+                                      binNumber, 0, 250));
+    } //end histogram creation loop
+
+    std::set<int> uniqueBoardsWithOOTMeasurements;
+    std::map<int, std::set<std::string>> failedMeasurementNames;
+    int count;
+    int OutOfToleranceCount = 0;
+    // Loop over the entries in the tree
+    for (int i = 0; i < numberOfEntries; ++i) {
+        
+        tree->GetEntry(i);
+        if (MeasurementId > 0) {
+            if (BoardType->compare("GBias") == 0) {
+                // Check if the measurement value is outside the tolerance range
+            if (MeasurementValue < NominalValue - Tolerance || MeasurementValue > NominalValue + Tolerance) {
+                OutOfToleranceCount++;
+                uniqueBoardsWithOOTMeasurements.insert(SerialNumber);
+                failedMeasurementNames[SerialNumber].insert(*MeasurementName);
+            }
+
+                vec1GBias[MeasurementId]->SetNameTitle(("GBias_" + *MeasurementName).c_str(),
+                (";Measurement Value (mm);Number of G-bias Boards"));
+                
+                vec1GBias[MeasurementId]->SetTitle(("GBias_" + *MeasurementName).c_str());
+                vec1GBias[MeasurementId]->Fill(MeasurementValue);
+            
+                vec1GBias[MeasurementId]->GetXaxis()->SetRangeUser(NominalValue - Tolerance, 
+                NominalValue + Tolerance);
+
+                vec1GBias[MeasurementId]->SetFillColor(17);
+
+                //Nominal line
+                TLine *NominalValueLine = new TLine(NominalValue, 0, NominalValue, 
+                vec1GBias[MeasurementId]->GetMaximum());
+
+                NominalValueLine->SetLineColor(kBlack);
+                NominalValueLine->SetLineStyle(9);
+                NominalValueLine->SetLineWidth(2);
+                vec1GBias[MeasurementId]->GetListOfFunctions()->Add(NominalValueLine);
+                
+                //+ Tolerance line
+                TLine *positiveToleranceLine = new TLine(NominalValue + Tolerance, 0, 
+                NominalValue + Tolerance, vec1GBias[MeasurementId]->GetMaximum());
+
+                positiveToleranceLine->SetLineColor(kBlue);
+                positiveToleranceLine->SetLineStyle(1);
+                vec1GBias[MeasurementId]->GetListOfFunctions()->Add(positiveToleranceLine);
+
+                //- Tolerance line
+                TLine *negativeToleranceLine = new TLine(NominalValue-Tolerance, 0, NominalValue-Tolerance, vec1GBias[MeasurementId]->GetMaximum());
+                negativeToleranceLine->SetLineColor(kBlue);
+                negativeToleranceLine->SetLineStyle(1);
+                vec1GBias[MeasurementId]->GetListOfFunctions()->Add(negativeToleranceLine);
+                
+                // Set Histogram Range
+                vec1GBias[MeasurementId]->GetXaxis()->SetRangeUser(NominalValue - (1.5*Tolerance), NominalValue + (1.5*Tolerance));
+                
+                //Gaussian Fit
+                TF1 *fit = new TF1("fit", "gaus");
+                fit->Clear();
+                fit->SetParameters(0, vec1GBias[MeasurementId]->GetMaximum());
+                fit->SetParameters(1, vec1GBias[MeasurementId]->GetMean());
+                fit->SetParameters(2, vec1GBias[MeasurementId]->GetStdDev());
+                fit->SetRange((vec1GBias[MeasurementId]->GetMean()) - (3 * (vec1GBias[MeasurementId]->GetStdDev())), (vec1GBias[MeasurementId]->GetMean()) + (3 * (vec1GBias[MeasurementId]->GetStdDev())));
+                vec1GBias[MeasurementId]->Fit(fit, "QR");
+
+                vec1GBias[MeasurementId]->SetStats(0);
+
+                //Legend formatting
+                TLegend *legend = new TLegend(0.75, 0.6, 1.0, 0.94); 
+                
+                double z = (((vec1GBias[MeasurementId]->GetMean())-(NominalValue))/(vec1GBias[MeasurementId]->GetStdDev()));
+                std::string s = std::to_string(z);
+
+                legend->Clear();
+                legend->AddEntry("", ("Measurements OOT: " + std::to_string(OutOfToleranceCount)).c_str(), "");
+                legend->AddEntry(positiveToleranceLine, "+/-Tolerance", "l");
+                legend->AddEntry(NominalValueLine, "Target (Nominal) Value", "l");
+                legend->AddEntry(fit, "Gaussian", "l");
+                
+                vec1GBias[MeasurementId]->GetListOfFunctions()->Add(legend);
+
+                //Reset Count
+                OutOfToleranceCount = 0;
+
+                vec1GBias[MeasurementId]->Draw();
+            } else {
+                continue;
+        }
+    } else {
+        continue;
+    }
+    }
+
+    // Loop to create canvases for each pdf page
+    std::vector<TCanvas*> Canvases;
+    for(size_t k = 0; k <= 7; ++k) {
+        Canvases.push_back(new TCanvas(("c" + std::to_string(k)).c_str(), ("quadrants" +std::to_string(k)).c_str()));
+    }
+
+    //Dividing the first canvas and opening the pdf file
+    Canvases[0]->Divide(2,2,0,0);
+    Canvases[0]->Print("GBiasHist.pdf[");
+    int canvasNum = 0;
+    for(int j = 1; j<=27; ++j) {
+        
+        //End condition
+        if(j == 27){
+            Canvases[canvasNum]->cd(j % 4);
+            vec1GBias[j]->Draw();
+            Canvases[canvasNum]->Print("GBiasHist.pdf");
+
+        } else if(j % 4 != 0){
+            Canvases[canvasNum]->cd(j % 4);
+            vec1GBias[j]->Draw();
+            Canvases[canvasNum]->Update();
+            gPad->Update();
+
+        //New page if the j is a multiple of 4
+        } else{
+            Canvases[canvasNum]->cd(4);
+            vec1GBias[j]->Draw();
+            Canvases[canvasNum]->Print("GBiasHist.pdf");
+            canvasNum = canvasNum + 1;
+            Canvases[canvasNum]->Divide(2,2,0,0);
+        }
+    }
+    Canvases[0]->Print("GBiasHist.pdf]");
+    // Create a new TPDF object to save the histograms in a separate PDF file
+    TPDF *pdf1 = new TPDF("GBiasHist_Separate.pdf");
+
+    TCanvas *canvas1 = new TCanvas("canvas1", "canvas1", 700, 900);
+    TLatex* text = new TLatex();
+    text->SetTextAlign(12);
+    text->SetTextSize(0.02);
+
+    // Calculate the x and y coordinates for the text
+    Double_t x = gPad->GetLeftMargin() + 0.01;
+    Double_t y = 1 - gPad->GetTopMargin() - 0.01;
+
+    // Loop through the unique boards with OOT measurements and add their serial numbers to the text
+    for (const auto& SerialNumber : uniqueBoardsWithOOTMeasurements) {
+        y -= 0.02;
+        text->SetTextColor(1); 
+        text->DrawLatexNDC(x, y, Form("Board with OOT measurement: %d", SerialNumber));
+        y -= 0.02; // Move the y coordinate down for the next line
+
+        // Loop through the failed measurement names and add them to the text
+        for (const auto& measurementName : failedMeasurementNames[SerialNumber]) {
+            text->SetTextColor(kGray);
+            text->DrawLatexNDC(x, y, Form("\tMeasurement Failed: %s", measurementName.c_str()));
+            y -= 0.02; // Move the y coordinate down for the next line
+        }
+    }
+    text->SetTextColor(1); 
+    y -= 0.02; 
+    text->DrawLatexNDC(x, y, Form("Rejected Boards: 91 (Artificial-> NOT A REAL BOARD)"));
+
+    float yeild = 90.0/91.0f;
+
+    y -= .05;
+    text-> DrawLatexNDC(x, y, Form("Yield percentage: %.2f%%", + yeild * 100));
+
+    canvas1->Draw();
+    pdf1->NewPage();
+    canvas1->Print("GBiasHist_Separate.pdf");
+
+    pdf1->Close();
+
+    inputFile->Close();
+
+}
